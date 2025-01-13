@@ -1,3 +1,18 @@
+/*
+ * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+ * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
 using System;
 using QuantConnect.Data;
 using QuantConnect.Data.Market;
@@ -16,10 +31,10 @@ namespace QuantConnect.Indicators
         private readonly int _smoothPeriod;
         private readonly decimal _channelMultiplier;
 
-        private readonly ExponentialMovingAverage _esa;
-        private readonly ExponentialMovingAverage _d;
-        private readonly ExponentialMovingAverage _ci;
-        private readonly SimpleMovingAverage _wt2;
+        private readonly ExponentialMovingAverage _exponentialSmoothedAverage;
+        private readonly ExponentialMovingAverage _absoluteDeviation;
+        private readonly ExponentialMovingAverage _channelIndex;
+        private readonly SimpleMovingAverage _smoothedWaveTrend;
 
         /// <summary>
         /// Gets the WaveTrend (TCI) indicator
@@ -29,12 +44,12 @@ namespace QuantConnect.Indicators
         /// <summary>
         /// Gets the WaveTrend smooth average (WT2) indicator
         /// </summary>
-        public IndicatorBase<IndicatorDataPoint> WaveTrendSmooth => _wt2;
+        public IndicatorBase<IndicatorDataPoint> WaveTrendSmooth => _smoothedWaveTrend;
 
         /// <summary>
         /// Indicates whether the indicator has enough data to be calculated.
         /// </summary>
-        public override bool IsReady => _esa.IsReady && _d.IsReady && _ci.IsReady && _wt2.IsReady;
+        public override bool IsReady => _exponentialSmoothedAverage.IsReady && _absoluteDeviation.IsReady && _channelIndex.IsReady && _smoothedWaveTrend.IsReady;
 
         /// <summary>
         /// Required period for the indicator to have enough data to work
@@ -50,19 +65,19 @@ namespace QuantConnect.Indicators
         /// <param name="smoothPeriod">The period for smoothing the WT2 line</param>
         /// <param name="channelMultiplier">The multiplier for the channel width</param>
         public WaveTrendOscillator(string name, int channelPeriod = 10, int averagePeriod = 21,
-            int smoothPeriod = 4, decimal channelMultiplier = 0.015m)
-            : base(name)
+        int smoothPeriod = 4, decimal channelMultiplier = 0.015m)
+        : base(name)
         {
             _channelPeriod = channelPeriod;
             _averagePeriod = averagePeriod;
             _smoothPeriod = smoothPeriod;
             _channelMultiplier = channelMultiplier;
 
-            _esa = new ExponentialMovingAverage(channelPeriod);
-            _d = new ExponentialMovingAverage(channelPeriod);
-            _ci = new ExponentialMovingAverage(averagePeriod);
-            WaveTrend = _ci;
-            _wt2 = new SimpleMovingAverage(smoothPeriod);
+            _exponentialSmoothedAverage = new ExponentialMovingAverage(channelPeriod);
+            _absoluteDeviation = new ExponentialMovingAverage(channelPeriod);
+            _channelIndex = new ExponentialMovingAverage(averagePeriod);
+            WaveTrend = _channelIndex;
+            _smoothedWaveTrend = new SimpleMovingAverage(smoothPeriod);
 
             WarmUpPeriod = channelPeriod + averagePeriod + smoothPeriod;
         }
@@ -75,9 +90,9 @@ namespace QuantConnect.Indicators
         /// <param name="smoothPeriod">The period for smoothing the WT2 line</param>
         /// <param name="channelMultiplier">The multiplier for the channel width</param>
         public WaveTrendOscillator(int channelPeriod = 10, int averagePeriod = 21,
-            int smoothPeriod = 4, decimal channelMultiplier = 0.015m)
-            : this($"WTO({channelPeriod},{averagePeriod},{smoothPeriod})",
-                  channelPeriod, averagePeriod, smoothPeriod, channelMultiplier)
+        int smoothPeriod = 4, decimal channelMultiplier = 0.015m)
+        : this($"WTO({channelPeriod},{averagePeriod},{smoothPeriod})",
+              channelPeriod, averagePeriod, smoothPeriod, channelMultiplier)
         {
         }
 
@@ -88,22 +103,30 @@ namespace QuantConnect.Indicators
         /// <returns>The computed value for this indicator</returns>
         protected override decimal ComputeNextValue(IBaseDataBar input)
         {
-            var hlc3 = (input.High + input.Low + input.Close) / 3m;
+            var typicalPrice = (input.High + input.Low + input.Close) / 3m;
 
-            _esa.Update(input.Time, hlc3);
-            if (!_esa.IsReady) return 0m;
+            if (!_exponentialSmoothedAverage.Update(input.Time, typicalPrice))
+            {
+                return 0m;
+            }
 
-            var absDistance = Math.Abs(hlc3 - _esa.Current.Value);
-            _d.Update(input.Time, absDistance);
-            if (!_d.IsReady) return 0m;
+            var absoluteDistance = Math.Abs(typicalPrice - _exponentialSmoothedAverage.Current.Value);
+            if (!_absoluteDeviation.Update(input.Time, absoluteDistance))
+            {
+                return 0m;
+            }
 
-            var ciValue = _d.Current.Value == 0 ? 0 :
-                (hlc3 - _esa.Current.Value) / (_channelMultiplier * _d.Current.Value);
-            _ci.Update(input.Time, ciValue);
+            decimal channelIndexValue = 0m;
+            if (_absoluteDeviation.Current.Value != 0m)
+            {
+                channelIndexValue = (typicalPrice - _exponentialSmoothedAverage.Current.Value) /
+                                  (_channelMultiplier * _absoluteDeviation.Current.Value);
+            }
 
-            _wt2.Update(input.Time, _ci.Current.Value);
+            _channelIndex.Update(input.Time, channelIndexValue);
+            _smoothedWaveTrend.Update(input.Time, _channelIndex.Current.Value);
 
-            return _ci.Current.Value;
+            return _channelIndex.Current.Value;
         }
 
         /// <summary>
@@ -111,10 +134,10 @@ namespace QuantConnect.Indicators
         /// </summary>
         public override void Reset()
         {
-            _esa.Reset();
-            _d.Reset();
-            _ci.Reset();
-            _wt2.Reset();
+            _exponentialSmoothedAverage.Reset();
+            _absoluteDeviation.Reset();
+            _channelIndex.Reset();
+            _smoothedWaveTrend.Reset();
             base.Reset();
         }
     }
