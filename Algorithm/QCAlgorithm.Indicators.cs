@@ -3226,6 +3226,27 @@ namespace QuantConnect.Algorithm
             WarmUpIndicatorImpl(symbol, period, onDataConsolidated, history, identityConsolidator);
         }
 
+        /// <summary>
+        /// Creates a new WaveTrend oscillator indicator.
+        /// </summary>
+        /// <param name="symbol">The symbol whose WTO we want</param>
+        /// <param name="channelPeriod">The period for the channel calculations</param>
+        /// <param name="averagePeriod">The period for the average calculations</param>
+        /// <param name="smoothPeriod">The period for smoothing the WT2 line</param> 
+        /// <param name="channelMultiplier">The multiplier for the channel width</param>
+        /// <param name="resolution">The resolution</param>
+        /// <param name="selector">Selects a value from the BaseData to send into the indicator, if null defaults to casting the input value to a TradeBar</param>
+        /// <returns>A new WaveTrendOscillator indicator configured with the specified parameters</returns>
+        [DocumentationAttribute(Indicators)]
+        public WaveTrendOscillator WTO(Symbol symbol, int channelPeriod = 10, int averagePeriod = 21, int smoothPeriod = 4,
+            decimal channelMultiplier = 0.015m, Resolution? resolution = null, Func<IBaseData, IBaseDataBar> selector = null)
+        {
+            var name = CreateIndicatorName(symbol, $"WTO({channelPeriod},{averagePeriod},{smoothPeriod})", resolution);
+            var indicator = new WaveTrendOscillator(name, channelPeriod, averagePeriod, smoothPeriod, channelMultiplier);
+            InitializeIndicator(indicator, resolution, selector, symbol);
+            return indicator;
+        }
+
         private IEnumerable<Slice> GetIndicatorWarmUpHistory(IEnumerable<Symbol> symbols, IIndicator indicator, TimeSpan timeSpan, out bool identityConsolidator)
         {
             identityConsolidator = false;
