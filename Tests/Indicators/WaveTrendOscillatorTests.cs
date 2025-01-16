@@ -28,35 +28,28 @@ namespace QuantConnect.Tests.Indicators
         }
 
         protected override string TestFileName => "spy_wto.csv";
-
         protected override string TestColumnName => "TCI";
 
         [Test]
-        public void ComparesWithExternalDataWT2()
+        public override void ResetsProperly()
         {
-            var wto = new WaveTrendOscillator(10, 21, 4);
-            TestHelper.TestIndicator(wto.WaveTrend, "TCI", 0.001);
-            TestHelper.TestIndicator(wto.WaveTrendSmooth, "WT2", 0.001);
-        }
-
-        [Test]
-        public void ResetsProperly()
-        {
-            WaveTrendOscillator waveTrend = (WaveTrendOscillator) CreateIndicator();
+            WaveTrendOscillator waveTrend = (WaveTrendOscillator)CreateIndicator();
             foreach (var data in TestHelper.GetTradeBarStream(TestFileName, false))
             {
                 waveTrend.Update(data);
             }
             Assert.IsTrue(waveTrend.IsReady);
             Assert.IsTrue(waveTrend.WaveTrendSmooth.IsReady);
+            Assert.IsTrue(waveTrend.WaveTrend.IsReady);
 
             waveTrend.Reset();
             TestHelper.AssertIndicatorIsInDefaultState(waveTrend);
             TestHelper.AssertIndicatorIsInDefaultState(waveTrend.WaveTrendSmooth);
+            TestHelper.AssertIndicatorIsInDefaultState(waveTrend.WaveTrend);
         }
 
         [Test]
-        public void WarmsUpProperly()
+        public override void WarmsUpProperly()
         {
             WaveTrendOscillator indicator = (WaveTrendOscillator)CreateIndicator();
             var period = indicator.WarmUpPeriod;
@@ -66,12 +59,16 @@ namespace QuantConnect.Tests.Indicators
             {
                 indicator.Update(data);
                 samples++;
+
                 if (samples < period)
                 {
                     Assert.IsFalse(indicator.IsReady);
                 }
             }
+
             Assert.IsTrue(indicator.IsReady);
+            Assert.IsTrue(indicator.WaveTrendSmooth.IsReady);
+            Assert.IsTrue(indicator.WaveTrend.IsReady);
         }
     }
 }
